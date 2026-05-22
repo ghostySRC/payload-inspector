@@ -344,6 +344,188 @@
       user-select: none;
     }
 
+    /* ========================================
+      5. v1.0.3 SETTINGS PANEL & COMPACT MODE STYLES
+      ======================================== */
+    .settings-section {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 14px;
+      margin-bottom: 14px;
+    }
+    .settings-section:last-of-type {
+      border-bottom: none;
+      padding-bottom: 0;
+      margin-bottom: 0;
+    }
+    .settings-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 10px;
+    }
+    .settings-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .settings-row:last-child {
+      margin-bottom: 0;
+    }
+    .settings-info {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    .settings-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .settings-description {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      line-height: 1.3;
+    }
+    
+    /* Toggle switches & elements inside settings modal */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--bg-surface-2);
+      transition: .3s;
+      border-radius: 22px;
+      border: 1px solid var(--border);
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: var(--text-muted);
+      transition: .3s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: var(--accent-soft);
+      border-color: var(--accent);
+    }
+    input:checked + .slider:before {
+      transform: translateX(18px);
+      background-color: var(--accent);
+    }
+    
+    .settings-select {
+      background: var(--bg-main);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      padding: 6px 24px 6px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      font-weight: 500;
+      max-width: 120px;
+      text-overflow: ellipsis;
+    }
+    .settings-select-wrapper {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+    .settings-select-wrapper .select-arrow {
+      right: 8px;
+      width: 8px;
+      height: 8px;
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      stroke: var(--text-main);
+      stroke-width: 2;
+      fill: none;
+      pointer-events: none;
+    }
+
+    /* Gear pulsing animation for notification alerts */
+    @keyframes gear-pulse {
+      0% { transform: scale(1); filter: drop-shadow(0 0 0 var(--accent)); }
+      50% { transform: scale(1.15) rotate(45deg); filter: drop-shadow(0 0 8px var(--accent)); }
+      100% { transform: scale(1); filter: drop-shadow(0 0 0 var(--accent)); }
+    }
+    .pulse-gear {
+      animation: gear-pulse 0.8s ease-in-out 3;
+      color: var(--accent) !important;
+    }
+
+    /* Compact View Mode Overrides */
+    body.compact-mode header {
+      padding: 8px 12px;
+      margin: 8px 12px 0 12px;
+      gap: 8px;
+    }
+    body.compact-mode .list-container {
+      padding: 8px 12px;
+      gap: 8px;
+    }
+    body.compact-mode .domain-group {
+      margin-top: 4px;
+    }
+    body.compact-mode .domain-header {
+      padding: 8px 12px;
+    }
+    body.compact-mode .domain-title {
+      font-size: 13px;
+    }
+    body.compact-mode .card {
+      margin-top: 4px;
+    }
+    body.compact-mode .card-header {
+      padding: 8px;
+    }
+    body.compact-mode .url {
+      font-size: 11px;
+    }
+    body.compact-mode pre {
+      font-size: 10px;
+      padding: 6px;
+      max-height: 150px;
+    }
+    body.compact-mode .json-tree {
+      font-size: 10px;
+    }
+    body.compact-mode .filter-pill {
+      padding: 4px 10px;
+      font-size: 10px;
+    }
+    body.compact-mode .pill-control {
+      padding: 6px 10px;
+      font-size: 11px;
+    }
+
     @media (max-width: 380px) {
       .clear-text { display: none; }
       #clearBtn { padding: 8px !important; border-radius: 50% !important; }
@@ -362,16 +544,6 @@
         <h1>Inspector</h1>
       </div>
       <div class="controls">
-        <div style="position: relative;">
-          <select id="langSelect" class="pill-control">
-            <option value="en">EN</option>
-            <option value="sv">SV</option>
-            <option value="es">ES</option>
-            <option value="de">DE</option>
-            <option value="fr">FR</option>
-          </select>
-          <svg class="select-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
-        </div>
         <button id="exportBtn" class="pill-control" aria-label="Export logs">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
           <span class="export-text" data-i18n="exportLogs">Export</span>
@@ -380,9 +552,6 @@
           <a id="supportBtn" class="pill-control" href="https://ko-fi.com/ghostyy69" target="_blank" data-i18n-title="support">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor" stroke="none"/></svg>
           </a>
-          <button id="themeToggle" class="pill-control" aria-label="Toggle Theme">
-            <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"></svg>
-          </button>
           <button id="patchNotesBtn" class="pill-control" aria-label="Patch Notes">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
           </button>
@@ -415,26 +584,23 @@
         </button>
       </div>
       <div style="font-size: 13px; color: var(--text-muted); line-height: 1.6; max-height: 250px; overflow-y: auto; padding-right: 4px;">
+        <strong>v1.0.3 (The Settings & Customization Update)</strong><br>
+        - <strong>All-in-One Settings Panel</strong>: Accessible via gear icon to manage themes, languages, notifications, capping, and blacklist.<br>
+        - <strong>Compact View Mode</strong>: Densifies margins, fonts, and paddings to fit maximum payloads on screen.<br>
+        - <strong>History Queue Cap</strong>: Smart garbage collector purges oldest unpinned requests at 50, 100, 200 thresholds.<br>
+        - <strong>Audio Notification Chime</strong>: High-fidelity Web Audio API synth beep + gear pulsing animation on payload intercept.<br>
+        <br>
         <strong>v1.0.2 (The Developer Power-Pack)</strong><br>
         - <strong>Payload Diff Mode</strong>: Select two payloads to perform beautiful visual side-by-side JSON diffs.<br>
         - <strong>Network Type Filters</strong>: Instantly filter cards with [All], [Fetch/XHR], or [WebSockets] pills.<br>
-        - <strong>Domain Blacklist</strong>: Stop background script from capturing muted domains to declutter panels.<br>
+        - <strong>Domain Blacklist</strong>: Stop background worker from capturing blacklisted domains.<br>
         <br>
         <strong>v1.0.1 (The Mega Update)</strong><br>
         - <strong>Copy as cURL / Fetch</strong>: Quick copy buttons inside expanded cards.<br>
         - <strong>Export All to JSON</strong>: Grouped domain export in toolbar.<br>
-        - <strong>Deep Payload Search</strong>: Filters cards by key/value/body content.<br>
         - <strong>Interactive JSON Tree View</strong>: Expand/collapse nested JSON objects.<br>
-        - <strong>Payload Size Indicator</strong>: Shows exact size (e.g. 1.4 KB) on card.<br>
-        - <strong>JSON Syntax Highlighting</strong>: Professional dark/light themes.<br>
-        - <strong>Pin/Favorite Payloads</strong>: Keeps cards pinned and protected.<br>
-        - <strong>Response Status Matching</strong>: Colorized HTTP status badges.<br>
-        <br>
-        <strong>v1.0.0 (Release)</strong><br>
-        - Initial stable release.<br>
-        - Fully responsive UI for ultra-narrow side panels.<br>
-        - Smart grouping and payload heuristics.<br>
-        - Integrated secure donation bridge.
+        - <strong>Payload Size Indicator</strong>: Shows exact payload size on cards.<br>
+        - <strong>Pin/Favorite Payloads</strong>: Keeps cards pinned and protected.
       </div>
     </div>
   </div>
@@ -461,21 +627,122 @@
   </div>
 
   <div id="settingsModal" class="modal">
-    <div class="modal-content" style="max-width: 400px; width: 90%;">
-      <div class="modal-header">
-        <span data-i18n="settingsTitle" style="font-weight: 700;">Muted Domains</span>
+    <div class="modal-content" style="max-width: 420px; width: 92%; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 8px;">
+        <span data-i18n="settingsTitle" style="font-weight: 700; font-size: 16px;">Settings & Customization</span>
         <button id="closeSettingsModalBtn" style="border:none; box-shadow:none; padding:6px; background:transparent; cursor:pointer; color: var(--text-main);">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 4px;">
-        <div style="font-size: 12px; color: var(--text-muted); line-height: 1.4;">
-          Type in domains you want to ignore (one per line). Requests to these domains will be completely ignored by the background worker.
+      
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        
+        <!-- SECTION 1: INTERFACE -->
+        <div class="settings-section">
+          <div class="settings-section-title">Interface Settings</div>
+          
+          <!-- Theme Toggle Row -->
+          <div class="settings-row">
+            <div class="settings-info">
+              <span class="settings-label">Dark Theme</span>
+              <span class="settings-description">Switch between gorgeous Dark and Light modes</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="settingsThemeToggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+          
+          <!-- Language Selector Row -->
+          <div class="settings-row">
+            <div class="settings-info">
+              <span class="settings-label">Language</span>
+              <span class="settings-description">Select panel language and translations</span>
+            </div>
+            <div class="settings-select-wrapper">
+              <select id="settingsLangSelect" class="settings-select">
+                <option value="en">English (EN)</option>
+                <option value="sv">Svenska (SV)</option>
+                <option value="es">Español (ES)</option>
+                <option value="de">Deutsch (DE)</option>
+                <option value="fr">Français (FR)</option>
+              </select>
+              <svg class="select-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+          </div>
+          
+          <!-- Compact Mode Row -->
+          <div class="settings-row">
+            <div class="settings-info">
+              <span class="settings-label">Compact View Mode</span>
+              <span class="settings-description">Shrink margins, fonts and padding for dense display</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="settingsCompactToggle">
+              <span class="slider"></span>
+            </label>
+          </div>
         </div>
-        <textarea id="blacklistInput" style="width: 100%; height: 120px; background: var(--bg-main); border: 1px solid var(--border); color: var(--text-main); padding: 12px; border-radius: 12px; font-size: 12px; font-family: ui-monospace, monospace; resize: none; outline: none; transition: border-color 0.2s;" placeholder="e.g.&#10;google-analytics.com&#10;hotjar.com"></textarea>
-        <button id="saveSettingsBtn" class="pill-control" style="justify-content: center; background: var(--accent); color: #fff; font-weight: 700; border: none; padding: 10px 16px; border-radius: 12px; width: 100%; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);">
-          Save Blacklist
+        
+        <!-- SECTION 2: INTERCEPTION -->
+        <div class="settings-section">
+          <div class="settings-section-title">Interception Options</div>
+          
+          <!-- Auto-scroll Row -->
+          <div class="settings-row">
+            <div class="settings-info">
+              <span class="settings-label">Auto-scroll to latest payload</span>
+              <span class="settings-description">Automatically scroll view when new payloads arrive</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="settingsAutoScrollToggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+          
+          <!-- Max History Limit Row -->
+          <div class="settings-row">
+            <div class="settings-info">
+              <span class="settings-label">Max payload history limit</span>
+              <span class="settings-description">Cap stored requests to prevent memory bloat (keeps pinned)</span>
+            </div>
+            <div class="settings-select-wrapper">
+              <select id="settingsMaxHistorySelect" class="settings-select">
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+                <option value="unlimited">Unlimited</option>
+              </select>
+              <svg class="select-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+          </div>
+          
+          <!-- Notification Alerts Row -->
+          <div class="settings-row">
+            <div class="settings-info">
+              <span class="settings-label">Notification alerts</span>
+              <span class="settings-description">Pulse gear icon and play a soft chime on payload intercept</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="settingsNotificationsToggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+        
+        <!-- SECTION 3: MUTED DOMAINS -->
+        <div class="settings-section">
+          <div class="settings-section-title">Domain Blacklist (Mute)</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.4;">
+            Domains to ignore (one per line). Requests to these will be ignored by the background worker.
+          </div>
+          <textarea id="blacklistInput" style="width: 100%; height: 80px; background: var(--bg-main); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: 8px; font-size: 11px; font-family: ui-monospace, monospace; resize: none; outline: none; transition: border-color 0.2s;" placeholder="e.g.&#10;google-analytics.com&#10;hotjar.com"></textarea>
+        </div>
+        
+        <button id="saveSettingsBtn" class="pill-control" style="justify-content: center; background: var(--accent); color: #fff; font-weight: 700; border: none; padding: 10px 16px; border-radius: 10px; width: 100%; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);">
+          Apply & Save Settings
         </button>
+        
       </div>
     </div>
   </div>

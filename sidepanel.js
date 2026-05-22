@@ -11,20 +11,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const clearBtn = document.getElementById('clearBtn');
   const exportBtn = document.getElementById('exportBtn');
   const filterInput = document.getElementById('filterInput');
-  const themeToggle = document.getElementById('themeToggle');
-  const themeIcon = document.getElementById('themeIcon');
   const patchNotesBtn = document.getElementById('patchNotesBtn');
   const patchModal = document.getElementById('patchModal');
   const closeModalBtn = document.getElementById('closeModalBtn');
-  const langSelect = document.getElementById('langSelect');
   const htmlEl = document.documentElement;
 
-  // v1.0.2 Settings & Blacklist DOM
+  // v1.0.3 Settings Panel DOM
   const settingsBtn = document.getElementById('settingsBtn');
   const settingsModal = document.getElementById('settingsModal');
   const closeSettingsModalBtn = document.getElementById('closeSettingsModalBtn');
   const blacklistInput = document.getElementById('blacklistInput');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+  
+  const settingsThemeToggle = document.getElementById('settingsThemeToggle');
+  const settingsLangSelect = document.getElementById('settingsLangSelect');
+  const settingsCompactToggle = document.getElementById('settingsCompactToggle');
+  const settingsAutoScrollToggle = document.getElementById('settingsAutoScrollToggle');
+  const settingsMaxHistorySelect = document.getElementById('settingsMaxHistorySelect');
+  const settingsNotificationsToggle = document.getElementById('settingsNotificationsToggle');
 
   // v1.0.2 Comparison Modal DOM
   const diffModal = document.getElementById('diffModal');
@@ -38,6 +42,17 @@ document.addEventListener('DOMContentLoaded', () => {
   let requestCounter = 0;
   let selectedCardsForCompare = [];
   let activeTypeFilter = 'all';
+
+  // Default settings
+  let settings = {
+    lang: 'en',
+    theme: 'dark',
+    autoScroll: true,
+    maxHistory: '100',
+    notifications: true,
+    compactMode: false
+  };
+
   // ==========================================
   // TRANSLATION LOGIC (i18n)
   // ==========================================
@@ -68,42 +83,169 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  chrome.storage.local.get(['lang'], (result) => {
-    const lang = result.lang || 'en';
-    langSelect.value = lang;
-    applyTranslations(lang);
-  });
-
-  langSelect.addEventListener('change', (e) => {
-    const lang = e.target.value;
-    chrome.storage.local.set({ lang });
-    applyTranslations(lang);
-  });
-
   // ==========================================
-  // THEME LOGIC
+  // AUDIO SYNTHESIZER CHIME & FLASH
   // ==========================================
-  chrome.storage.local.get(['theme'], (result) => {
-    const theme = result.theme || 'dark';
-    htmlEl.setAttribute('data-theme', theme);
-    updateThemeIcon(theme);
-  });
-
-  themeToggle.addEventListener('click', () => {
-    const current = htmlEl.getAttribute('data-theme');
-    const next = current === 'dark' ? 'light' : 'dark';
-    htmlEl.setAttribute('data-theme', next);
-    chrome.storage.local.set({ theme: next });
-    updateThemeIcon(next);
-  });
-
-  function updateThemeIcon(theme) {
-    if (theme === 'dark') {
-      themeIcon.innerHTML = `<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>`;
-    } else {
-      themeIcon.innerHTML = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>`;
+  function playNotificationSound() {
+    if (!settings.notifications) return;
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.type = 'sine';
+      const now = audioCtx.currentTime;
+      
+      // Sweet high-pitch dual chime sweeps from 880Hz up to 1200Hz
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.15);
+      
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } catch (e) {
+      console.warn("AudioContext playback failed: ", e);
     }
   }
+
+  function flashSettingsIcon() {
+    if (!settings.notifications) return;
+    const btn = document.getElementById('settingsBtn');
+    if (btn) {
+      btn.classList.remove('pulse-gear');
+      void btn.offsetWidth; // Trigger DOM reflow to reset CSS animation
+      btn.classList.add('pulse-gear');
+      setTimeout(() => {
+        btn.classList.remove('pulse-gear');
+      }, 3000);
+    }
+  }
+
+  // ==========================================
+  // HISTORY LIMIT QUEUE (GARBAGE COLLECTOR)
+  // ==========================================
+  function enforceHistoryLimit() {
+    if (settings.maxHistory === 'unlimited') return;
+    const limit = parseInt(settings.maxHistory, 10);
+    if (isNaN(limit)) return;
+
+    const cards = Array.from(document.querySelectorAll('.card'));
+    if (cards.length <= limit) return;
+
+    // Filter unpinned cards and sort by chronological index ascending (oldest first)
+    const unpinned = cards
+      .filter(c => !c.classList.contains('pinned'))
+      .sort((a, b) => a._index - b._index);
+
+    const excessCount = cards.length - limit;
+    const toDelete = unpinned.slice(0, excessCount);
+
+    toDelete.forEach(card => {
+      const group = card.closest('.domain-group');
+      card.remove();
+
+      if (group) {
+        const badge = group.querySelector('.domain-badge');
+        const remaining = group.querySelectorAll('.card').length;
+        badge.textContent = remaining;
+        
+        if (remaining === 0) {
+          const titleEl = group.querySelector('.domain-title');
+          if (titleEl) {
+            const domain = titleEl.textContent.trim().toLowerCase();
+            delete domainGroups[domain];
+          }
+          group.remove();
+        }
+      }
+    });
+  }
+
+  // ==========================================
+  // APPLY AND SYNC ALL SETTINGS
+  // ==========================================
+  function applyAllSettings() {
+    // 1. Theme application
+    htmlEl.setAttribute('data-theme', settings.theme);
+    settingsThemeToggle.checked = (settings.theme === 'dark');
+
+    // 2. Language application
+    settingsLangSelect.value = settings.lang;
+    applyTranslations(settings.lang);
+
+    // 3. Compact View Mode
+    settingsCompactToggle.checked = settings.compactMode;
+    if (settings.compactMode) {
+      document.body.classList.add('compact-mode');
+    } else {
+      document.body.classList.remove('compact-mode');
+    }
+
+    // 4. Auto scroll setting
+    settingsAutoScrollToggle.checked = settings.autoScroll;
+
+    // 5. Max History
+    settingsMaxHistorySelect.value = settings.maxHistory;
+
+    // 6. Notification switch
+    settingsNotificationsToggle.checked = settings.notifications;
+
+    // Enforce history capping instantly
+    enforceHistoryLimit();
+  }
+
+  function saveIndividualSetting(key, value) {
+    settings[key] = value;
+    chrome.storage.local.set({ settings }, () => {
+      applyAllSettings();
+    });
+  }
+
+  // ==========================================
+  // LOAD PERSISTENT SETTINGS
+  // ==========================================
+  chrome.storage.local.get(['settings', 'theme', 'lang'], (result) => {
+    if (result.settings) {
+      settings = { ...settings, ...result.settings };
+    } else {
+      // Migrate v1.0.2 legacy preferences
+      if (result.theme) settings.theme = result.theme;
+      if (result.lang) settings.lang = result.lang;
+    }
+    applyAllSettings();
+  });
+
+  // ==========================================
+  // BIND REACTIVE LISTENERS FOR INSTANT SAVING
+  // ==========================================
+  settingsThemeToggle.addEventListener('change', (e) => {
+    saveIndividualSetting('theme', e.target.checked ? 'dark' : 'light');
+  });
+
+  settingsLangSelect.addEventListener('change', (e) => {
+    saveIndividualSetting('lang', e.target.value);
+  });
+
+  settingsCompactToggle.addEventListener('change', (e) => {
+    saveIndividualSetting('compactMode', e.target.checked);
+  });
+
+  settingsAutoScrollToggle.addEventListener('change', (e) => {
+    saveIndividualSetting('autoScroll', e.target.checked);
+  });
+
+  settingsMaxHistorySelect.addEventListener('change', (e) => {
+    saveIndividualSetting('maxHistory', e.target.value);
+  });
+
+  settingsNotificationsToggle.addEventListener('change', (e) => {
+    saveIndividualSetting('notifications', e.target.checked);
+  });
 
   // ==========================================
   // MODAL & GLOBAL ACTIONS LOGIC
@@ -114,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(e.target === patchModal) patchModal.classList.remove('open');
   });
 
-  // v1.0.2 Settings Modal Handlers
+  // Settings Dashboard Handlers
   settingsBtn.addEventListener('click', () => {
     chrome.storage.local.get(['mutedDomains'], (result) => {
       const list = result.mutedDomains || [];
@@ -138,9 +280,22 @@ document.addEventListener('DOMContentLoaded', () => {
       .map(d => d.trim().toLowerCase())
       .filter(d => d.length > 0);
 
+    // Save blacklisted domains
     chrome.storage.local.set({ mutedDomains: domains }, () => {
-      settingsModal.classList.remove('open');
       purgeMutedDomainCards(domains);
+    });
+
+    // Save all current parameters
+    settings.theme = settingsThemeToggle.checked ? 'dark' : 'light';
+    settings.lang = settingsLangSelect.value;
+    settings.compactMode = settingsCompactToggle.checked;
+    settings.autoScroll = settingsAutoScrollToggle.checked;
+    settings.maxHistory = settingsMaxHistorySelect.value;
+    settings.notifications = settingsNotificationsToggle.checked;
+
+    chrome.storage.local.set({ settings }, () => {
+      applyAllSettings();
+      settingsModal.classList.remove('open');
     });
   });
 
@@ -797,6 +952,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const currentCount = parseInt(badge.textContent) || 0;
     badge.textContent = currentCount + 1;
+
+    // Trigger v1.0.3 features
+    playNotificationSound();
+    flashSettingsIcon();
+    enforceHistoryLimit();
+
+    // Handle Auto-scroll if enabled
+    if (settings.autoScroll) {
+      listContainer.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   }
 
   // ==========================================
