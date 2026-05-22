@@ -215,6 +215,135 @@
       box-shadow: none;
     }
 
+    /* ========================================
+      4. v1.0.2 STYLINGS (PILLS, CHECKBOXES, DIFF, SETTINGS)
+      ======================================== */
+    :root[data-theme="dark"] {
+      --diff-added-bg: rgba(16, 185, 129, 0.15);
+      --diff-added-text: #4ade80;
+      --diff-deleted-bg: rgba(239, 68, 68, 0.15);
+      --diff-deleted-text: #f87171;
+    }
+    :root[data-theme="light"] {
+      --diff-added-bg: rgba(16, 185, 129, 0.12);
+      --diff-added-text: #16a34a;
+      --diff-deleted-bg: rgba(239, 68, 68, 0.12);
+      --diff-deleted-text: #dc2626;
+    }
+
+    .filter-pills-container {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+    }
+    .filter-pill {
+      background: var(--bg-surface-2);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      outline: none;
+      box-shadow: 0 1px 3px var(--shadow-color);
+    }
+    .filter-pill:hover {
+      background: var(--bg-hover);
+      color: var(--text-main);
+      transform: translateY(-1px);
+    }
+    .filter-pill.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 0 8px var(--accent-soft);
+    }
+
+    .compare-label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      gap: 5px;
+      font-size: 10px;
+      color: var(--text-muted);
+      user-select: none;
+      transition: color 0.2s;
+    }
+    .compare-label:hover {
+      color: var(--text-main);
+    }
+    .compare-chk {
+      accent-color: var(--accent);
+      cursor: pointer;
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--bg-main);
+    }
+
+    .diff-container {
+      display: flex;
+      gap: 12px;
+      flex: 1;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+    .diff-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .diff-pane-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .diff-pre {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg-main);
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      margin: 0;
+      max-height: unset !important;
+    }
+    .diff-line {
+      min-height: 18px;
+      line-height: 18px;
+      padding: 0 6px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      border-radius: 2px;
+    }
+    .diff-line.normal {
+      color: var(--text-main);
+    }
+    .diff-line.deleted {
+      background-color: var(--diff-deleted-bg);
+      color: var(--diff-deleted-text);
+    }
+    .diff-line.added {
+      background-color: var(--diff-added-bg);
+      color: var(--diff-added-text);
+    }
+    .diff-line.empty {
+      background-color: transparent;
+      color: transparent;
+      user-select: none;
+    }
+
     @media (max-width: 380px) {
       .clear-text { display: none; }
       #clearBtn { padding: 8px !important; border-radius: 50% !important; }
@@ -257,6 +386,9 @@
           <button id="patchNotesBtn" class="pill-control" aria-label="Patch Notes">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
           </button>
+          <button id="settingsBtn" class="pill-control" aria-label="Settings" title="Muted Domains">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </button>
         </div>
         <button id="clearBtn" class="pill-control" aria-label="Clear logs">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
@@ -265,6 +397,11 @@
       </div>
     </div>
     <input type="text" id="filterInput" data-i18n-placeholder="filter" placeholder="Filter by domain or URL..." autocomplete="off">
+    <div class="filter-pills-container">
+      <button class="filter-pill active" data-type="all">All</button>
+      <button class="filter-pill" data-type="fetch">Fetch/XHR</button>
+      <button class="filter-pill" data-type="websocket">WebSockets</button>
+    </div>
   </header>
 
   <div class="list-container" id="listContainer"></div>
@@ -278,6 +415,11 @@
         </button>
       </div>
       <div style="font-size: 13px; color: var(--text-muted); line-height: 1.6; max-height: 250px; overflow-y: auto; padding-right: 4px;">
+        <strong>v1.0.2 (The Developer Power-Pack)</strong><br>
+        - <strong>Payload Diff Mode</strong>: Select two payloads to perform beautiful visual side-by-side JSON diffs.<br>
+        - <strong>Network Type Filters</strong>: Instantly filter cards with [All], [Fetch/XHR], or [WebSockets] pills.<br>
+        - <strong>Domain Blacklist</strong>: Stop background script from capturing muted domains to declutter panels.<br>
+        <br>
         <strong>v1.0.1 (The Mega Update)</strong><br>
         - <strong>Copy as cURL / Fetch</strong>: Quick copy buttons inside expanded cards.<br>
         - <strong>Export All to JSON</strong>: Grouped domain export in toolbar.<br>
@@ -293,6 +435,47 @@
         - Fully responsive UI for ultra-narrow side panels.<br>
         - Smart grouping and payload heuristics.<br>
         - Integrated secure donation bridge.
+      </div>
+    </div>
+  </div>
+
+  <div id="diffModal" class="modal">
+    <div class="modal-content" style="max-width: 600px; width: 95%; height: 85vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <span data-i18n="compareTitle" style="font-weight: 700;">Payload Comparison</span>
+        <button id="closeDiffModalBtn" style="border:none; box-shadow:none; padding:6px; background:transparent; cursor:pointer; color: var(--text-main);">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="diff-container">
+        <div class="diff-pane">
+          <div class="diff-pane-title" id="diffPaneLeftTitle">Request A</div>
+          <pre class="diff-pre" id="diffPaneLeft"></pre>
+        </div>
+        <div class="diff-pane">
+          <div class="diff-pane-title" id="diffPaneRightTitle">Request B</div>
+          <pre class="diff-pre" id="diffPaneRight"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="settingsModal" class="modal">
+    <div class="modal-content" style="max-width: 400px; width: 90%;">
+      <div class="modal-header">
+        <span data-i18n="settingsTitle" style="font-weight: 700;">Muted Domains</span>
+        <button id="closeSettingsModalBtn" style="border:none; box-shadow:none; padding:6px; background:transparent; cursor:pointer; color: var(--text-main);">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 4px;">
+        <div style="font-size: 12px; color: var(--text-muted); line-height: 1.4;">
+          Type in domains you want to ignore (one per line). Requests to these domains will be completely ignored by the background worker.
+        </div>
+        <textarea id="blacklistInput" style="width: 100%; height: 120px; background: var(--bg-main); border: 1px solid var(--border); color: var(--text-main); padding: 12px; border-radius: 12px; font-size: 12px; font-family: ui-monospace, monospace; resize: none; outline: none; transition: border-color 0.2s;" placeholder="e.g.&#10;google-analytics.com&#10;hotjar.com"></textarea>
+        <button id="saveSettingsBtn" class="pill-control" style="justify-content: center; background: var(--accent); color: #fff; font-weight: 700; border: none; padding: 10px 16px; border-radius: 12px; width: 100%; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);">
+          Save Blacklist
+        </button>
       </div>
     </div>
   </div>

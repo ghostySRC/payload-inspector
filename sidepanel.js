@@ -19,8 +19,25 @@ document.addEventListener('DOMContentLoaded', () => {
   const langSelect = document.getElementById('langSelect');
   const htmlEl = document.documentElement;
 
+  // v1.0.2 Settings & Blacklist DOM
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsModal = document.getElementById('settingsModal');
+  const closeSettingsModalBtn = document.getElementById('closeSettingsModalBtn');
+  const blacklistInput = document.getElementById('blacklistInput');
+  const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+
+  // v1.0.2 Comparison Modal DOM
+  const diffModal = document.getElementById('diffModal');
+  const closeDiffModalBtn = document.getElementById('closeDiffModalBtn');
+  const diffPaneLeft = document.getElementById('diffPaneLeft');
+  const diffPaneRight = document.getElementById('diffPaneRight');
+  const diffPaneLeftTitle = document.getElementById('diffPaneLeftTitle');
+  const diffPaneRightTitle = document.getElementById('diffPaneRightTitle');
+
   let domainGroups = {}; 
   let requestCounter = 0;
+  let selectedCardsForCompare = [];
+  let activeTypeFilter = 'all';
   // ==========================================
   // TRANSLATION LOGIC (i18n)
   // ==========================================
@@ -97,9 +114,150 @@ document.addEventListener('DOMContentLoaded', () => {
     if(e.target === patchModal) patchModal.classList.remove('open');
   });
 
+  // v1.0.2 Settings Modal Handlers
+  settingsBtn.addEventListener('click', () => {
+    chrome.storage.local.get(['mutedDomains'], (result) => {
+      const list = result.mutedDomains || [];
+      blacklistInput.value = list.join('\n');
+      settingsModal.classList.add('open');
+    });
+  });
+
+  closeSettingsModalBtn.addEventListener('click', () => {
+    settingsModal.classList.remove('open');
+  });
+
+  settingsModal.addEventListener('click', (e) => {
+    if (e.target === settingsModal) settingsModal.classList.remove('open');
+  });
+
+  saveSettingsBtn.addEventListener('click', () => {
+    const listStr = blacklistInput.value || '';
+    const domains = listStr
+      .split(/[\n,]+/)
+      .map(d => d.trim().toLowerCase())
+      .filter(d => d.length > 0);
+
+    chrome.storage.local.set({ mutedDomains: domains }, () => {
+      settingsModal.classList.remove('open');
+      purgeMutedDomainCards(domains);
+    });
+  });
+
+  function purgeMutedDomainCards(domains) {
+    document.querySelectorAll('.domain-group').forEach(group => {
+      const titleEl = group.querySelector('.domain-title');
+      if (!titleEl) return;
+      const domain = titleEl.textContent.trim().toLowerCase();
+      const isMuted = domains.some(d => domain === d || domain.endsWith('.' + d));
+      if (isMuted) {
+        group.remove();
+        delete domainGroups[domain];
+      }
+    });
+  }
+
+  // v1.0.2 Visual Diff Modal Handlers
+  closeDiffModalBtn.addEventListener('click', () => {
+    closeAndClearDiff();
+  });
+
+  diffModal.addEventListener('click', (e) => {
+    if (e.target === diffModal) closeAndClearDiff();
+  });
+
+  function closeAndClearDiff() {
+    diffModal.classList.remove('open');
+    selectedCardsForCompare.forEach(item => {
+      const chk = item.card.querySelector('.compare-chk');
+      if (chk) chk.checked = false;
+    });
+    selectedCardsForCompare = [];
+    document.querySelectorAll('.compare-chk').forEach(chk => {
+      chk.disabled = false;
+    });
+  }
+
+  function runLCSDiff(payloadA, payloadB) {
+    const strA = typeof payloadA === 'object' ? JSON.stringify(payloadA, null, 2) : String(payloadA);
+    const strB = typeof payloadB === 'object' ? JSON.stringify(payloadB, null, 2) : String(payloadB);
+
+    const linesA = strA.split('\n');
+    const linesB = strB.split('\n');
+
+    const dp = Array(linesA.length + 1).fill(null).map(() => Array(linesB.length + 1).fill(0));
+    for (let i = 1; i <= linesA.length; i++) {
+      for (let j = 1; j <= linesB.length; j++) {
+        if (linesA[i-1] === linesB[j-1]) {
+          dp[i][j] = dp[i-1][j-1] + 1;
+        } else {
+          dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
+        }
+      }
+    }
+
+    const diffLeft = [];
+    const diffRight = [];
+    let i = linesA.length, j = linesB.length;
+
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && linesA[i-1] === linesB[j-1]) {
+        diffLeft.unshift({ text: linesA[i-1], type: 'normal' });
+        diffRight.unshift({ text: linesB[j-1], type: 'normal' });
+        i--;
+        j--;
+      } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+        diffLeft.unshift({ text: '', type: 'empty' });
+        diffRight.unshift({ text: linesB[j-1], type: 'added' });
+        j--;
+      } else {
+        diffLeft.unshift({ text: linesA[i-1], type: 'deleted' });
+        diffRight.unshift({ text: '', type: 'empty' });
+        i--;
+      }
+    }
+
+    return { left: diffLeft, right: diffRight };
+  }
+
+  function renderDiffSide(container, diffLines) {
+    container.innerHTML = '';
+    diffLines.forEach(line => {
+      const lineEl = document.createElement('div');
+      lineEl.className = `diff-line ${line.type}`;
+      if (line.text === '') {
+        lineEl.innerHTML = '&nbsp;';
+      } else {
+        lineEl.textContent = line.text;
+      }
+      container.appendChild(lineEl);
+    });
+  }
+
+  function triggerDiffModal() {
+    if (selectedCardsForCompare.length !== 2) return;
+    const reqA = selectedCardsForCompare[0].request;
+    const reqB = selectedCardsForCompare[1].request;
+
+    let pathA = "Request A";
+    let pathB = "Request B";
+    try { pathA = new URL(reqA.url).pathname; } catch(e) {}
+    try { pathB = new URL(reqB.url).pathname; } catch(e) {}
+
+    diffPaneLeftTitle.textContent = `${reqA.method} ${pathA} (${reqA.timestamp})`;
+    diffPaneRightTitle.textContent = `${reqB.method} ${pathB} (${reqB.timestamp})`;
+
+    const diff = runLCSDiff(reqA.payload, reqB.payload);
+    renderDiffSide(diffPaneLeft, diff.left);
+    renderDiffSide(diffPaneRight, diff.right);
+
+    diffModal.classList.add('open');
+  }
+
   clearBtn.addEventListener('click', () => {
     listContainer.innerHTML = '';
     domainGroups = {};
+    selectedCardsForCompare = [];
   });
 
   // ==========================================
@@ -353,8 +511,8 @@ document.addEventListener('DOMContentLoaded', () => {
     URL.revokeObjectURL(url);
   });
 
-  filterInput.addEventListener('input', (e) => {
-    const term = e.target.value.trim().toLowerCase();
+  function applyFilters() {
+    const term = filterInput.value.trim().toLowerCase();
     
     document.querySelectorAll('.domain-group').forEach(group => {
       let matchCount = 0;
@@ -364,6 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const req = card._request;
         if (!req) return;
         
+        // 1. Text Search Filter
         const urlMatch = req.url && req.url.toLowerCase().includes(term);
         const methodMatch = req.method && req.method.toLowerCase().includes(term);
         
@@ -375,8 +534,19 @@ document.addEventListener('DOMContentLoaded', () => {
             payloadMatch = req.payload.toString().toLowerCase().includes(term);
           }
         }
+        const matchesText = !term || urlMatch || methodMatch || payloadMatch;
         
-        if (!term || urlMatch || methodMatch || payloadMatch) {
+        // 2. Type Filter Pill Match
+        let matchesType = false;
+        if (activeTypeFilter === 'all') {
+          matchesType = true;
+        } else if (activeTypeFilter === 'fetch') {
+          matchesType = (req.type === 'xmlhttprequest' || !req.type);
+        } else if (activeTypeFilter === 'websocket') {
+          matchesType = (req.type === 'websocket');
+        }
+        
+        if (matchesText && matchesType) {
           card.style.display = 'block';
           matchCount++;
         } else {
@@ -385,17 +555,30 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       
       const badge = group.querySelector('.domain-badge');
-      if (!term) {
+      if (matchCount > 0) {
         group.style.display = 'block';
-        badge.textContent = cards.length;
-      } else {
-        if (matchCount > 0) {
-          group.style.display = 'block';
-          badge.textContent = `${matchCount}/${cards.length}`;
+        if (!term) {
+          badge.textContent = matchCount;
         } else {
-          group.style.display = 'none';
+          badge.textContent = `${matchCount}/${cards.length}`;
         }
+      } else {
+        group.style.display = 'none';
       }
+    });
+  }
+
+  filterInput.addEventListener('input', () => {
+    applyFilters();
+  });
+
+  // Wire up the filter pill buttons
+  document.querySelectorAll('.filter-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      activeTypeFilter = pill.getAttribute('data-type');
+      applyFilters();
     });
   });
 
@@ -519,13 +702,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Payload Size Calculation
     const sizeStr = getPayloadSizeString(request.payload);
     request.size = sizeStr;
-
     card.innerHTML = `
       <div class="card-header">
         <div class="card-top" style="display: flex; align-items: center; width: 100%; gap: 8px;">
           <button class="pin-btn" title="Pin payload" style="background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">
             <svg class="star-icon" viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: var(--text-muted); fill: none; pointer-events: none;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
           </button>
+          <label class="compare-label" title="Select to compare JSON structures">
+            <input type="checkbox" class="compare-chk">
+            <span>Compare</span>
+          </label>
           <span class="method">${request.method || 'POST'}</span>
           <span class="url" title="${request.url}">${request.url}</span>
           <span class="status-badge ${statusClass}">${statusLabel}</span>
@@ -542,7 +728,7 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
 
-    // Prevent toggle expanded body when clicking on the pin button
+    // Prevent toggle expanded body when clicking on the pin button or compare label
     const pinBtn = card.querySelector('.pin-btn');
     pinBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -551,9 +737,32 @@ document.addEventListener('DOMContentLoaded', () => {
       reorderCards(body);
     });
 
+    const compareChk = card.querySelector('.compare-chk');
+    const compareLabel = card.querySelector('.compare-label');
+    compareLabel.addEventListener('click', (e) => {
+      e.stopPropagation(); // Stop expansion on label click
+    });
+
+    compareChk.addEventListener('change', () => {
+      if (compareChk.checked) {
+        selectedCardsForCompare.push({ card, request });
+        if (selectedCardsForCompare.length === 2) {
+          document.querySelectorAll('.compare-chk').forEach(chk => {
+            if (!chk.checked) chk.disabled = true;
+          });
+          triggerDiffModal();
+        }
+      } else {
+        selectedCardsForCompare = selectedCardsForCompare.filter(item => item.card !== card);
+        document.querySelectorAll('.compare-chk').forEach(chk => {
+          chk.disabled = false;
+        });
+      }
+    });
+
     // Toggle expanded body click listener
     card.querySelector('.card-header').addEventListener('click', (e) => {
-       if (e.target.closest('.pin-btn')) return;
+       if (e.target.closest('.pin-btn') || e.target.closest('.compare-label')) return;
        const content = card.querySelector('.card-body-content');
        content.style.display = content.style.display === 'none' ? 'block' : 'none';
     });

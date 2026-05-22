@@ -5,6 +5,38 @@
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
 
 // ==========================================
+// DOMAIN BLACKLIST ENGINE
+// ==========================================
+let mutedDomains = [];
+
+// Fetch initial blacklist from storage
+chrome.storage.local.get(['mutedDomains'], (result) => {
+  if (result.mutedDomains) {
+    mutedDomains = result.mutedDomains;
+  }
+});
+
+// Update the active blacklist in memory dynamically on change
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.mutedDomains) {
+    mutedDomains = changes.mutedDomains.newValue || [];
+  }
+});
+
+function isDomainMuted(url) {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return mutedDomains.some(domain => {
+      const d = domain.trim().toLowerCase();
+      if (!d) return false;
+      return hostname === d || hostname.endsWith('.' + d);
+    });
+  } catch (e) {
+    return false;
+  }
+}
+
+// ==========================================
 // PAYLOAD INTERCEPTOR LOGIC
 // ==========================================
 const pendingRequests = new Map();
@@ -21,10 +53,22 @@ setInterval(() => {
 
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
-    if (details.method === 'POST' || details.method === 'PUT' || details.method === 'PATCH') {
+    // Drop blacklisted domains immediately
+    if (isDomainMuted(details.url)) {
+      return;
+    }
+
+    const isWebSocket = details.type === 'websocket';
+    if (details.method === 'POST' || details.method === 'PUT' || details.method === 'PATCH' || isWebSocket) {
       let payloadData = null;
       
-      if (details.requestBody) {
+      if (isWebSocket) {
+        payloadData = {
+          connection: "WebSocket Handshake Connection Established",
+          protocol: "ws/wss",
+          timestamp: new Date().toISOString()
+        };
+      } else if (details.requestBody) {
         if (details.requestBody.formData) {
           payloadData = details.requestBody.formData;
         } else if (details.requestBody.raw && details.requestBody.raw[0]) {
@@ -39,7 +83,8 @@ chrome.webRequest.onBeforeRequest.addListener(
 
       pendingRequests.set(details.requestId, {
         url: details.url,
-        method: details.method,
+        method: isWebSocket ? 'WS' : details.method,
+        type: details.type,
         payload: payloadData,
         timestamp: Date.now()
       });
@@ -58,7 +103,8 @@ chrome.webRequest.onCompleted.addListener(
         type: 'NEW_PAYLOAD',
         data: {
           url: details.url,
-          method: details.method,
+          method: req.method,
+          type: req.type || details.type || 'xmlhttprequest',
           payload: req.payload,
           status: details.statusCode
         }
@@ -77,7 +123,8 @@ chrome.webRequest.onErrorOccurred.addListener(
         type: 'NEW_PAYLOAD',
         data: {
           url: details.url,
-          method: details.method,
+          method: req.method,
+          type: req.type || details.type || 'xmlhttprequest',
           payload: req.payload,
           status: 'Error'
         }
