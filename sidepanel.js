@@ -954,7 +954,6 @@ document.addEventListener('DOMContentLoaded', () => {
     badge.textContent = currentCount + 1;
 
     // Trigger v1.0.3 features
-    playNotificationSound();
     flashSettingsIcon();
     enforceHistoryLimit();
 
