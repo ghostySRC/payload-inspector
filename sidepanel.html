@@ -19,6 +19,11 @@
       --accent: #60a5fa;
       --accent-soft: rgba(96, 165, 250, 0.15);
       --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+      --json-key: #c678dd;
+      --json-string: #98c379;
+      --json-number: #d19a66;
+      --json-bool: #56b6c2;
+      --json-null: #abb2bf;
     }
     :root[data-theme="light"] {
       --bg-main: #f3f4f6;
@@ -32,6 +37,11 @@
       --accent: #3b82f6;
       --accent-soft: rgba(59, 130, 246, 0.1);
       --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+      --json-key: #a626a4;
+      --json-string: #50a14f;
+      --json-number: #986801;
+      --json-bool: #0184bc;
+      --json-null: #a0a1a7;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -136,6 +146,75 @@
     .modal.open .modal-content { transform: translateY(0); }
     .modal-header { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 16px; }
 
+    /* Syntax Highlight & Tree styling */
+    .json-tree { font-family: ui-monospace, monospace; font-size: 11px; margin-top: 4px; line-height: 1.5; }
+    .json-node { margin-left: 12px; position: relative; }
+    .json-toggle:hover { text-decoration: underline; }
+    .json-child-container { transition: all 0.2s; }
+    
+    /* Status Badge styling */
+    .status-badge {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-transform: uppercase;
+      box-shadow: 0 1px 2px var(--shadow-color);
+    }
+    .status-success {
+      background-color: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    .status-error {
+      background-color: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    /* Pinned and Star button styles */
+    .pin-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .pin-btn:hover {
+      background: var(--bg-hover);
+      color: #f59e0b;
+    }
+    .pin-btn.pinned {
+      color: #f59e0b;
+    }
+    .pin-btn.pinned svg {
+      fill: #f59e0b;
+      stroke: #f59e0b;
+    }
+
+    /* Actions inside payload card */
+    .card-actions {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+      justify-content: flex-end;
+    }
+    .card-actions .pill-control {
+      padding: 4px 8px;
+      font-size: 10px;
+      border-radius: 8px;
+      margin: 0;
+      box-shadow: none;
+    }
+
     @media (max-width: 380px) {
       .clear-text { display: none; }
       #clearBtn { padding: 8px !important; border-radius: 50% !important; }
@@ -164,6 +243,10 @@
           </select>
           <svg class="select-arrow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </div>
+        <button id="exportBtn" class="pill-control" aria-label="Export logs">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <span class="export-text" data-i18n="exportLogs">Export</span>
+        </button>
         <div class="icon-pills">
           <a id="supportBtn" class="pill-control" href="https://ko-fi.com/ghostyy69" target="_blank" data-i18n-title="support">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="currentColor" stroke="none"/></svg>
@@ -194,7 +277,17 @@
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
-      <div style="font-size: 13px; color: var(--text-muted); line-height: 1.6;">
+      <div style="font-size: 13px; color: var(--text-muted); line-height: 1.6; max-height: 250px; overflow-y: auto; padding-right: 4px;">
+        <strong>v1.0.1 (The Mega Update)</strong><br>
+        - <strong>Copy as cURL / Fetch</strong>: Quick copy buttons inside expanded cards.<br>
+        - <strong>Export All to JSON</strong>: Grouped domain export in toolbar.<br>
+        - <strong>Deep Payload Search</strong>: Filters cards by key/value/body content.<br>
+        - <strong>Interactive JSON Tree View</strong>: Expand/collapse nested JSON objects.<br>
+        - <strong>Payload Size Indicator</strong>: Shows exact size (e.g. 1.4 KB) on card.<br>
+        - <strong>JSON Syntax Highlighting</strong>: Professional dark/light themes.<br>
+        - <strong>Pin/Favorite Payloads</strong>: Keeps cards pinned and protected.<br>
+        - <strong>Response Status Matching</strong>: Colorized HTTP status badges.<br>
+        <br>
         <strong>v1.0.0 (Release)</strong><br>
         - Initial stable release.<br>
         - Fully responsive UI for ultra-narrow side panels.<br>

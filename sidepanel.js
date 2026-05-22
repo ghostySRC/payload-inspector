@@ -9,6 +9,7 @@ chrome.runtime.connect({ name: 'sidepanel-connection' });
 document.addEventListener('DOMContentLoaded', () => {
   const listContainer = document.getElementById('listContainer');
   const clearBtn = document.getElementById('clearBtn');
+  const exportBtn = document.getElementById('exportBtn');
   const filterInput = document.getElementById('filterInput');
   const themeToggle = document.getElementById('themeToggle');
   const themeIcon = document.getElementById('themeIcon');
@@ -19,16 +20,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const htmlEl = document.documentElement;
 
   let domainGroups = {}; 
-
+  let requestCounter = 0;
   // ==========================================
   // TRANSLATION LOGIC (i18n)
   // ==========================================
   const translations = {
-    en: { clearLogs: "Clear logs", filter: "Filter by domain or URL...", releaseNotes: "Release Notes", support: "Support project" },
-    sv: { clearLogs: "Rensa loggar", filter: "Filtrera efter domän eller URL...", releaseNotes: "Versionsfakta", support: "Stötta projektet" },
-    es: { clearLogs: "Borrar registros", filter: "Filtrar por dominio o URL...", releaseNotes: "Notas de la versión", support: "Apoyar proyecto" },
-    de: { clearLogs: "Protokolle löschen", filter: "Nach Domäne oder URL filtern...", releaseNotes: "Versionshinweise", support: "Projekt unterstützen" },
-    fr: { clearLogs: "Effacer les journaux", filter: "Filtrer par domaine ou URL...", releaseNotes: "Notes de version", support: "Soutenir le projet" }
+    en: { clearLogs: "Clear logs", filter: "Filter by domain or URL...", releaseNotes: "Release Notes", support: "Support project", exportLogs: "Export" },
+    sv: { clearLogs: "Rensa loggar", filter: "Filtrera efter domän eller URL...", releaseNotes: "Versionsfakta", support: "Stötta projektet", exportLogs: "Exportera" },
+    es: { clearLogs: "Borrar registros", filter: "Filtrar por dominio o URL...", releaseNotes: "Notas de la versión", support: "Apoyar proyecto", exportLogs: "Exportar" },
+    de: { clearLogs: "Protokolle löschen", filter: "Nach Domäne oder URL filtern...", releaseNotes: "Versionshinweise", support: "Projekt unterstützen", exportLogs: "Export" },
+    fr: { clearLogs: "Effacer les journaux", filter: "Filtrer par domaine ou URL...", releaseNotes: "Notes de version", support: "Soutenir le projet", exportLogs: "Exporter" }
   };
 
   function applyTranslations(lang) {
@@ -101,11 +102,300 @@ document.addEventListener('DOMContentLoaded', () => {
     domainGroups = {};
   });
 
-  filterInput.addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
+  // ==========================================
+  // HELPERS & EXPORT LOGIC
+  // ==========================================
+  function getCurlCommand(request) {
+    const method = request.method || 'POST';
+    const url = request.url;
+    let dataStr = '';
+    if (request.payload) {
+      if (typeof request.payload === 'object') {
+        dataStr = JSON.stringify(request.payload);
+      } else {
+        dataStr = request.payload.toString();
+      }
+    }
+    const escapedUrl = url.replace(/'/g, "'\\''");
+    const escapedData = dataStr.replace(/'/g, "'\\''");
+    return `curl '${escapedUrl}' -X ${method} -H 'content-type: application/json' --data-raw '${escapedData}'`;
+  }
+
+  function getFetchSnippet(request) {
+    const method = request.method || 'POST';
+    const url = request.url;
+    let bodyStr = 'null';
+    if (request.payload) {
+      if (typeof request.payload === 'object') {
+        bodyStr = `JSON.stringify(${JSON.stringify(request.payload, null, 2)})`;
+      } else {
+        bodyStr = JSON.stringify(request.payload);
+      }
+    }
+    return `fetch(${JSON.stringify(url)}, {
+  method: ${JSON.stringify(method)},
+  headers: {
+    "content-type": "application/json"
+  },
+  body: ${bodyStr}
+});`;
+  }
+
+  function getPayloadSizeString(payload) {
+    if (!payload) return "0 B";
+    let str = "";
+    if (typeof payload === 'object') {
+      str = JSON.stringify(payload);
+    } else {
+      str = payload.toString();
+    }
+    const bytes = new TextEncoder().encode(str).length;
+    if (bytes < 1024) return `${bytes} B`;
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  function createJSONTree(data) {
+    const container = document.createElement('div');
+    container.className = 'json-tree';
+    
+    function buildNode(key, value, isLast) {
+      const node = document.createElement('div');
+      node.className = 'json-node';
+      
+      const keySpan = document.createElement('span');
+      keySpan.className = 'json-key';
+      if (key !== null) {
+        keySpan.textContent = `"${key}": `;
+        keySpan.style.color = 'var(--json-key)';
+        keySpan.style.fontWeight = '600';
+        node.appendChild(keySpan);
+      }
+      
+      if (value === null) {
+        const valSpan = document.createElement('span');
+        valSpan.textContent = 'null' + (isLast ? '' : ',');
+        valSpan.style.color = 'var(--json-null)';
+        node.appendChild(valSpan);
+      } else if (typeof value === 'boolean') {
+        const valSpan = document.createElement('span');
+        valSpan.textContent = value.toString() + (isLast ? '' : ',');
+        valSpan.style.color = 'var(--json-bool)';
+        node.appendChild(valSpan);
+      } else if (typeof value === 'number') {
+        const valSpan = document.createElement('span');
+        valSpan.textContent = value.toString() + (isLast ? '' : ',');
+        valSpan.style.color = 'var(--json-number)';
+        node.appendChild(valSpan);
+      } else if (typeof value === 'string') {
+        const valSpan = document.createElement('span');
+        valSpan.textContent = `"${value}"` + (isLast ? '' : ',');
+        valSpan.style.color = 'var(--json-string)';
+        valSpan.style.wordBreak = 'break-all';
+        node.appendChild(valSpan);
+      } else if (Array.isArray(value)) {
+        const header = document.createElement('span');
+        header.className = 'json-toggle';
+        header.style.cursor = 'pointer';
+        header.style.userSelect = 'none';
+        
+        const bracketOpen = document.createElement('span');
+        bracketOpen.textContent = '[';
+        bracketOpen.style.color = 'var(--text-main)';
+        header.appendChild(bracketOpen);
+        
+        const collapseIndicator = document.createElement('span');
+        collapseIndicator.textContent = ' ... ';
+        collapseIndicator.style.display = 'none';
+        collapseIndicator.style.background = 'var(--bg-hover)';
+        collapseIndicator.style.padding = '0 4px';
+        collapseIndicator.style.borderRadius = '4px';
+        collapseIndicator.style.fontSize = '10px';
+        collapseIndicator.style.color = 'var(--text-muted)';
+        header.appendChild(collapseIndicator);
+        
+        node.appendChild(header);
+        
+        const childContainer = document.createElement('div');
+        childContainer.className = 'json-child-container';
+        
+        value.forEach((item, index) => {
+          childContainer.appendChild(buildNode(null, item, index === value.length - 1));
+        });
+        
+        node.appendChild(childContainer);
+        
+        const bracketClose = document.createElement('div');
+        bracketClose.textContent = ']' + (isLast ? '' : ',');
+        bracketClose.style.color = 'var(--text-main)';
+        bracketClose.style.marginLeft = '12px';
+        node.appendChild(bracketClose);
+        
+        header.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const collapsed = childContainer.style.display === 'none';
+          childContainer.style.display = collapsed ? 'block' : 'none';
+          bracketClose.style.display = collapsed ? 'block' : 'inline';
+          if (collapsed) {
+            bracketClose.style.marginLeft = '12px';
+            collapseIndicator.style.display = 'none';
+          } else {
+            bracketClose.style.marginLeft = '0px';
+            collapseIndicator.style.display = 'inline';
+          }
+        });
+      } else if (typeof value === 'object') {
+        const keys = Object.keys(value);
+        const header = document.createElement('span');
+        header.className = 'json-toggle';
+        header.style.cursor = 'pointer';
+        header.style.userSelect = 'none';
+        
+        const bracketOpen = document.createElement('span');
+        bracketOpen.textContent = '{';
+        bracketOpen.style.color = 'var(--text-main)';
+        header.appendChild(bracketOpen);
+        
+        const collapseIndicator = document.createElement('span');
+        collapseIndicator.textContent = ' ... ';
+        collapseIndicator.style.display = 'none';
+        collapseIndicator.style.background = 'var(--bg-hover)';
+        collapseIndicator.style.padding = '0 4px';
+        collapseIndicator.style.borderRadius = '4px';
+        collapseIndicator.style.fontSize = '10px';
+        collapseIndicator.style.color = 'var(--text-muted)';
+        header.appendChild(collapseIndicator);
+        
+        node.appendChild(header);
+        
+        const childContainer = document.createElement('div');
+        childContainer.className = 'json-child-container';
+        
+        keys.forEach((k, index) => {
+          childContainer.appendChild(buildNode(k, value[k], index === keys.length - 1));
+        });
+        
+        node.appendChild(childContainer);
+        
+        const bracketClose = document.createElement('div');
+        bracketClose.textContent = '}' + (isLast ? '' : ',');
+        bracketClose.style.color = 'var(--text-main)';
+        bracketClose.style.marginLeft = '12px';
+        node.appendChild(bracketClose);
+        
+        header.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const collapsed = childContainer.style.display === 'none';
+          childContainer.style.display = collapsed ? 'block' : 'none';
+          bracketClose.style.display = collapsed ? 'block' : 'inline';
+          if (collapsed) {
+            bracketClose.style.marginLeft = '12px';
+            collapseIndicator.style.display = 'none';
+          } else {
+            bracketClose.style.marginLeft = '0px';
+            collapseIndicator.style.display = 'inline';
+          }
+        });
+      }
+      
+      return node;
+    }
+    
+    if (data === null || typeof data !== 'object') {
+      const rawSpan = document.createElement('span');
+      rawSpan.textContent = String(data);
+      rawSpan.style.color = 'var(--text-main)';
+      container.appendChild(rawSpan);
+    } else {
+      container.appendChild(buildNode(null, data, true));
+    }
+    
+    return container;
+  }
+
+  function reorderCards(body) {
+    const cards = Array.from(body.querySelectorAll('.card'));
+    cards.sort((a, b) => {
+      const aPinned = a.classList.contains('pinned') ? 1 : 0;
+      const bPinned = b.classList.contains('pinned') ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+      return b._index - a._index;
+    });
+    cards.forEach(c => body.appendChild(c));
+  }
+
+  exportBtn.addEventListener('click', () => {
+    const exportData = {};
     document.querySelectorAll('.domain-group').forEach(group => {
-       const text = group.innerText.toLowerCase();
-       group.style.display = text.includes(term) ? 'block' : 'none';
+      const domain = group.querySelector('.domain-title').textContent;
+      exportData[domain] = [];
+      group.querySelectorAll('.card').forEach(card => {
+        if (card._request) {
+          exportData[domain].push({
+            url: card._request.url,
+            method: card._request.method,
+            timestamp: card._request.timestamp || card.querySelector('.time').textContent,
+            status: card._request.status || null,
+            size: card._request.size || null,
+            payload: card._request.payload
+          });
+        }
+      });
+    });
+    
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", url);
+    downloadAnchor.setAttribute("download", `payload_inspector_export_${Date.now()}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  filterInput.addEventListener('input', (e) => {
+    const term = e.target.value.trim().toLowerCase();
+    
+    document.querySelectorAll('.domain-group').forEach(group => {
+      let matchCount = 0;
+      const cards = group.querySelectorAll('.card');
+      
+      cards.forEach(card => {
+        const req = card._request;
+        if (!req) return;
+        
+        const urlMatch = req.url && req.url.toLowerCase().includes(term);
+        const methodMatch = req.method && req.method.toLowerCase().includes(term);
+        
+        let payloadMatch = false;
+        if (req.payload) {
+          if (typeof req.payload === 'object') {
+            payloadMatch = JSON.stringify(req.payload).toLowerCase().includes(term);
+          } else {
+            payloadMatch = req.payload.toString().toLowerCase().includes(term);
+          }
+        }
+        
+        if (!term || urlMatch || methodMatch || payloadMatch) {
+          card.style.display = 'block';
+          matchCount++;
+        } else {
+          card.style.display = 'none';
+        }
+      });
+      
+      const badge = group.querySelector('.domain-badge');
+      if (!term) {
+        group.style.display = 'block';
+        badge.textContent = cards.length;
+      } else {
+        if (matchCount > 0) {
+          group.style.display = 'block';
+          badge.textContent = `${matchCount}/${cards.length}`;
+        } else {
+          group.style.display = 'none';
+        }
+      }
     });
   });
 
@@ -150,8 +440,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation(); 
-      group.remove(); 
-      delete domainGroups[domain]; 
+      const cards = Array.from(group.querySelectorAll('.card'));
+      cards.forEach(card => {
+        if (!card.classList.contains('pinned')) {
+          card.remove();
+        }
+      });
+      
+      const remainingCards = group.querySelectorAll('.card');
+      const badge = group.querySelector('.domain-badge');
+      badge.textContent = remainingCards.length;
+      
+      if (remainingCards.length === 0) {
+        group.remove(); 
+        delete domainGroups[domain]; 
+      }
     });
 
     const headerRight = document.createElement('div');
@@ -200,35 +503,88 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const card = document.createElement('div');
     card.className = 'card';
+    card._request = request;
+    card._index = requestCounter++;
     
-    let payloadString = "";
-    if (typeof request.payload === 'object') {
-        payloadString = JSON.stringify(request.payload, null, 2);
-    } else {
-        payloadString = request.payload || "No payload data";
-    }
-
     const time = getFormattedTime();
+    request.timestamp = time; // Preserve for exports
+
+    // Status Badge Logic
+    let statusClass = "status-success";
+    let statusLabel = request.status ? request.status.toString() : "200";
+    if (request.status === "Error" || (typeof request.status === 'number' && request.status >= 400)) {
+      statusClass = "status-error";
+    }
+    
+    // Payload Size Calculation
+    const sizeStr = getPayloadSizeString(request.payload);
+    request.size = sizeStr;
 
     card.innerHTML = `
       <div class="card-header">
-        <div class="card-top">
+        <div class="card-top" style="display: flex; align-items: center; width: 100%; gap: 8px;">
+          <button class="pin-btn" title="Pin payload" style="background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">
+            <svg class="star-icon" viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: var(--text-muted); fill: none; pointer-events: none;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          </button>
           <span class="method">${request.method || 'POST'}</span>
           <span class="url" title="${request.url}">${request.url}</span>
-          <span class="time">${time}</span>
+          <span class="status-badge ${statusClass}">${statusLabel}</span>
+          <span class="size-badge" style="font-size: 10px; color: var(--text-muted); background: var(--bg-main); border: 1px solid var(--border); padding: 2px 6px; border-radius: 8px; white-space: nowrap;">${sizeStr}</span>
+          <span class="time" style="white-space: nowrap; margin-left: auto;">${time}</span>
         </div>
       </div>
-      <div class="card-body-content" style="display: none;">
-        <pre>${payloadString}</pre>
+      <div class="card-body-content" style="display: none; padding: 12px; border-top: 1px solid var(--border);">
+        <div class="card-actions" style="display: flex; gap: 6px; margin-bottom: 8px; justify-content: flex-end;">
+          <button class="pill-control copy-curl-btn" style="padding: 4px 8px; font-size: 10px; border-radius: 8px; margin: 0; box-shadow: none;">cURL</button>
+          <button class="pill-control copy-fetch-btn" style="padding: 4px 8px; font-size: 10px; border-radius: 8px; margin: 0; box-shadow: none;">Fetch</button>
+        </div>
+        <div class="tree-container"></div>
       </div>
     `;
 
-    card.querySelector('.card-header').addEventListener('click', () => {
+    // Prevent toggle expanded body when clicking on the pin button
+    const pinBtn = card.querySelector('.pin-btn');
+    pinBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      card.classList.toggle('pinned');
+      pinBtn.classList.toggle('pinned');
+      reorderCards(body);
+    });
+
+    // Toggle expanded body click listener
+    card.querySelector('.card-header').addEventListener('click', (e) => {
+       if (e.target.closest('.pin-btn')) return;
        const content = card.querySelector('.card-body-content');
        content.style.display = content.style.display === 'none' ? 'block' : 'none';
     });
 
+    // Copy cURL and Fetch event listeners
+    card.querySelector('.copy-curl-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      navigator.clipboard.writeText(getCurlCommand(request)).then(() => {
+        const originalText = btn.textContent;
+        btn.textContent = "Copied!";
+        setTimeout(() => btn.textContent = originalText, 1500);
+      });
+    });
+
+    card.querySelector('.copy-fetch-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      navigator.clipboard.writeText(getFetchSnippet(request)).then(() => {
+        const originalText = btn.textContent;
+        btn.textContent = "Copied!";
+        setTimeout(() => btn.textContent = originalText, 1500);
+      });
+    });
+
+    // Build the interactive tree view
+    const treeContainer = card.querySelector('.tree-container');
+    treeContainer.appendChild(createJSONTree(request.payload));
+
     body.prepend(card);
+    reorderCards(body);
 
     const currentCount = parseInt(badge.textContent) || 0;
     badge.textContent = currentCount + 1;

@@ -7,9 +7,20 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(consol
 // ==========================================
 // PAYLOAD INTERCEPTOR LOGIC
 // ==========================================
+const pendingRequests = new Map();
+
+// Periodic cleanup of pending requests older than 60 seconds to avoid memory leaks
+setInterval(() => {
+  const now = Date.now();
+  for (const [requestId, req] of pendingRequests.entries()) {
+    if (now - req.timestamp > 60000) {
+      pendingRequests.delete(requestId);
+    }
+  }
+}, 30000);
+
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
-    // We only care about requests that send data
     if (details.method === 'POST' || details.method === 'PUT' || details.method === 'PATCH') {
       let payloadData = null;
       
@@ -18,7 +29,6 @@ chrome.webRequest.onBeforeRequest.addListener(
           payloadData = details.requestBody.formData;
         } else if (details.requestBody.raw && details.requestBody.raw[0]) {
           try {
-            // Convert binary buffer to readable JSON string
             const stringStr = new TextDecoder('utf-8').decode(details.requestBody.raw[0].bytes);
             payloadData = JSON.parse(stringStr);
           } catch (e) {
@@ -27,22 +37,54 @@ chrome.webRequest.onBeforeRequest.addListener(
         }
       }
 
-      // Send the captured data to the sidepanel
+      pendingRequests.set(details.requestId, {
+        url: details.url,
+        method: details.method,
+        payload: payloadData,
+        timestamp: Date.now()
+      });
+    }
+  },
+  { urls: ["<all_urls>"] },
+  ["requestBody"]
+);
+
+chrome.webRequest.onCompleted.addListener(
+  (details) => {
+    const req = pendingRequests.get(details.requestId);
+    if (req) {
+      pendingRequests.delete(details.requestId);
       chrome.runtime.sendMessage({
         type: 'NEW_PAYLOAD',
         data: {
           url: details.url,
           method: details.method,
-          payload: payloadData
+          payload: req.payload,
+          status: details.statusCode
         }
-      }).catch(() => {
-        // This catch block prevents Chrome from throwing errors in the background console
-        // when the side panel is closed and unable to receive messages.
-      }); 
+      }).catch(() => {});
     }
   },
-  { urls: ["<all_urls>"] },
-  ["requestBody"]
+  { urls: ["<all_urls>"] }
+);
+
+chrome.webRequest.onErrorOccurred.addListener(
+  (details) => {
+    const req = pendingRequests.get(details.requestId);
+    if (req) {
+      pendingRequests.delete(details.requestId);
+      chrome.runtime.sendMessage({
+        type: 'NEW_PAYLOAD',
+        data: {
+          url: details.url,
+          method: details.method,
+          payload: req.payload,
+          status: 'Error'
+        }
+      }).catch(() => {});
+    }
+  },
+  { urls: ["<all_urls>"] }
 );
 
 // ==========================================

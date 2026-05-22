@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Payload Inspector Pro",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Fångar utgående payloads, grupperar per domän och använder ett mjukt gränssnitt.",
   "permissions": [
     "webRequest",
