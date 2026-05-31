@@ -1,153 +1,121 @@
-// ==========================================
-// INITIALIZATION
-// ==========================================
-// Opens the side panel when the extension icon is clicked
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+// background.js
 
-// ==========================================
-// DOMAIN BLACKLIST ENGINE
-// ==========================================
-let mutedDomains = [];
+const SUSPICIOUS_PATTERNS = {
+    // Fångar upp SQLi-mönster som OR '1'='1', UNION SELECT etc.
+    sqli: /('|\%27).*?(OR|UNION|SELECT|DROP|INSERT)/i,
+    // Fångar upp XSS-injektioner
+    xss: /(<|\%3C).*?(script|img|svg|iframe|on\w+)/i,
+    // Letar efter nycklar som indikerar känslig information
+    sensitive: /(password|passwd|creditcard|cvv)/i
+};
 
-// Fetch initial blacklist from storage
-chrome.storage.local.get(['mutedDomains'], (result) => {
-  if (result.mutedDomains) {
-    mutedDomains = result.mutedDomains;
-  }
-});
+// Domäner vi litar på (allt annat räknas som externt/okänt)
+const KNOWN_DOMAINS = ["localhost", "127.0.0.1"]; 
 
-// Update the active blacklist in memory dynamically on change
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.mutedDomains) {
-    mutedDomains = changes.mutedDomains.newValue || [];
-  }
-});
-
-function isDomainMuted(url) {
-  try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    return mutedDomains.some(domain => {
-      const d = domain.trim().toLowerCase();
-      if (!d) return false;
-      return hostname === d || hostname.endsWith('.' + d);
-    });
-  } catch (e) {
-    return false;
-  }
-}
-
-// ==========================================
-// PAYLOAD INTERCEPTOR LOGIC
-// ==========================================
-const pendingRequests = new Map();
-
-// Periodic cleanup of pending requests older than 60 seconds to avoid memory leaks
-setInterval(() => {
-  const now = Date.now();
-  for (const [requestId, req] of pendingRequests.entries()) {
-    if (now - req.timestamp > 60000) {
-      pendingRequests.delete(requestId);
-    }
-  }
-}, 30000);
+// Tillstånd
+let tabAlerts = {}; // Mappar tabId -> array av varningar
+let killSwitchedTabs = new Set();
 
 chrome.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    // Drop blacklisted domains immediately
-    if (isDomainMuted(details.url)) {
-      return;
-    }
+    (details) => {
+        // Om Kill Switch är aktiverad för denna flik bryr vi oss inte om att skanna längre
+        if (killSwitchedTabs.has(details.tabId)) return;
 
-    const isWebSocket = details.type === 'websocket';
-    if (details.method === 'POST' || details.method === 'PUT' || details.method === 'PATCH' || isWebSocket) {
-      let payloadData = null;
-      
-      if (isWebSocket) {
-        payloadData = {
-          connection: "WebSocket Handshake Connection Established",
-          protocol: "ws/wss",
-          timestamp: new Date().toISOString()
-        };
-      } else if (details.requestBody) {
-        if (details.requestBody.formData) {
-          payloadData = details.requestBody.formData;
-        } else if (details.requestBody.raw && details.requestBody.raw[0]) {
-          try {
-            const stringStr = new TextDecoder('utf-8').decode(details.requestBody.raw[0].bytes);
-            payloadData = JSON.parse(stringStr);
-          } catch (e) {
-            payloadData = "Raw binary/text data";
-          }
+        const urlObj = new URL(details.url);
+        const isExternal = !KNOWN_DOMAINS.includes(urlObj.hostname);
+        let payloadString = "";
+
+        // Läs ut payload från request body om den finns
+        if (details.requestBody) {
+            if (details.requestBody.formData) {
+                payloadString = JSON.stringify(details.requestBody.formData);
+            } else if (details.requestBody.raw) {
+                payloadString = details.requestBody.raw.map(data => {
+                    return data.bytes ? new TextDecoder('utf-8').decode(data.bytes) : '';
+                }).join('');
+            }
         }
-      }
 
-      pendingRequests.set(details.requestId, {
-        url: details.url,
-        method: isWebSocket ? 'WS' : details.method,
-        type: details.type,
-        payload: payloadData,
-        timestamp: Date.now()
-      });
-    }
-  },
-  { urls: ["<all_urls>"] },
-  ["requestBody"]
-);
+        // Vi skannar både URL (för GET-parametrar) och Bodyn
+        const dataToScan = details.url + payloadString;
+        let flagged = false;
+        let reason = "";
 
-chrome.webRequest.onCompleted.addListener(
-  (details) => {
-    const req = pendingRequests.get(details.requestId);
-    if (req) {
-      pendingRequests.delete(details.requestId);
-      chrome.runtime.sendMessage({
-        type: 'NEW_PAYLOAD',
-        data: {
-          url: details.url,
-          method: req.method,
-          type: req.type || details.type || 'xmlhttprequest',
-          payload: req.payload,
-          status: details.statusCode
+        // Kör heuristik
+        if (isExternal && SUSPICIOUS_PATTERNS.sensitive.test(dataToScan)) {
+            flagged = true;
+            reason = "Känslig data skickas mot extern domän (Lösenord/CVV)";
+        } else if (SUSPICIOUS_PATTERNS.sqli.test(dataToScan)) {
+            flagged = true;
+            reason = "Potentiell SQL-injektion detekterad i payload";
+        } else if (SUSPICIOUS_PATTERNS.xss.test(dataToScan)) {
+            flagged = true;
+            reason = "Potentiell XSS-injektion detekterad i payload";
         }
-      }).catch(() => {});
-    }
-  },
-  { urls: ["<all_urls>"] }
-);
 
-chrome.webRequest.onErrorOccurred.addListener(
-  (details) => {
-    const req = pendingRequests.get(details.requestId);
-    if (req) {
-      pendingRequests.delete(details.requestId);
-      chrome.runtime.sendMessage({
-        type: 'NEW_PAYLOAD',
-        data: {
-          url: details.url,
-          method: req.method,
-          type: req.type || details.type || 'xmlhttprequest',
-          payload: req.payload,
-          status: 'Error'
-        }
-      }).catch(() => {});
-    }
-  },
-  { urls: ["<all_urls>"] }
-);
-
-// ==========================================
-// GLOBAL SIDE PANEL CLOSE HACK
-// ==========================================
-// Listens for the invisible connection created in sidepanel.js
-chrome.runtime.onConnect.addListener((port) => {
-    if (port.name === 'sidepanel-connection') {
-        
-        // When the user clicks the native 'X' on the side panel, the port disconnects
-        port.onDisconnect.addListener(() => {
-            // Force disable the side panel across ALL tabs in the window
-            chrome.sidePanel.setOptions({ enabled: false }, () => {
-                // Immediately re-enable it in the background so it can be opened again later
-                chrome.sidePanel.setOptions({ enabled: true });
+        if (flagged && details.tabId >= 0) {
+            if (!tabAlerts[details.tabId]) tabAlerts[details.tabId] = [];
+            
+            // Spara varningen
+            tabAlerts[details.tabId].push({ 
+                url: details.url, 
+                reason: reason, 
+                time: Date.now() 
             });
+
+            // Meddela popup-UI:t om det är öppet
+            chrome.runtime.sendMessage({ 
+                type: "ALERT_TRIGGERED", 
+                tabId: details.tabId, 
+                reason: reason 
+            }).catch(() => {}); // Ignorera error om popupen är stängd
+        }
+    },
+    { urls: ["<all_urls>"] },
+    ["requestBody"] // Tillåter oss att läsa ut POST/PUT data
+);
+
+// Hantera kommunikation med Popup UI
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "ENABLE_KILL_SWITCH") {
+        const tabId = message.tabId;
+        killSwitchedTabs.add(tabId);
+
+        // Skapa en session-regel via Declarative Net Request som blockerar ALLT från denna flik
+        chrome.declarativeNetRequest.updateSessionRules({
+            addRules: [{
+                "id": tabId, // Använder tabId som regel-ID för enkel mappning
+                "priority": 100,
+                "action": { "type": "block" },
+                "condition": {
+                    "tabIds": [tabId],
+                    "resourceTypes": [
+                        "main_frame", "sub_frame", "stylesheet", "script", "image", 
+                        "font", "object", "xmlhttprequest", "ping", "csp_report", 
+                        "media", "websocket", "other"
+                    ]
+                }
+            }]
+        }, () => {
+            sendResponse({ success: true });
+        });
+        return true; // Håll kanalen öppen för asynkront svar
+    } 
+    else if (message.type === "GET_STATE") {
+        sendResponse({ 
+            alerts: tabAlerts[message.tabId] || [], 
+            isKilled: killSwitchedTabs.has(message.tabId) 
+        });
+    }
+});
+
+// Städa upp när en flik stängs så vi inte läcker minne eller regler
+chrome.tabs.onRemoved.addListener((tabId) => {
+    delete tabAlerts[tabId];
+    if (killSwitchedTabs.has(tabId)) {
+        killSwitchedTabs.delete(tabId);
+        chrome.declarativeNetRequest.updateSessionRules({
+            removeRuleIds: [tabId]
         });
     }
 });
