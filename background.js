@@ -1,13 +1,5 @@
 // background.js
-
-const SUSPICIOUS_PATTERNS = {
-    // Fångar upp SQLi-mönster som OR '1'='1', UNION SELECT etc.
-    sqli: /('|\%27).*?(OR|UNION|SELECT|DROP|INSERT)/i,
-    // Fångar upp XSS-injektioner
-    xss: /(<|\%3C).*?(script|img|svg|iframe|on\w+)/i,
-    // Letar efter nycklar som indikerar känslig information
-    sensitive: /(password|passwd|creditcard|cvv)/i
-};
+importScripts('utils/securityScanner.js');
 
 // Domäner vi litar på (allt annat räknas som externt/okänt)
 const KNOWN_DOMAINS = ["localhost", "127.0.0.1"]; 
@@ -15,14 +7,13 @@ const KNOWN_DOMAINS = ["localhost", "127.0.0.1"];
 // Tillstånd
 let tabAlerts = {}; // Mappar tabId -> array av varningar
 let killSwitchedTabs = new Set();
+const pendingRequests = new Map();
 
+// Fånga request body i första skedet av nätverkslivscykeln
 chrome.webRequest.onBeforeRequest.addListener(
     (details) => {
-        // Om Kill Switch är aktiverad för denna flik bryr vi oss inte om att skanna längre
         if (killSwitchedTabs.has(details.tabId)) return;
 
-        const urlObj = new URL(details.url);
-        const isExternal = !KNOWN_DOMAINS.includes(urlObj.hostname);
         let payloadString = "";
 
         // Läs ut payload från request body om den finns
@@ -36,43 +27,94 @@ chrome.webRequest.onBeforeRequest.addListener(
             }
         }
 
-        // Vi skannar både URL (för GET-parametrar) och Bodyn
-        const dataToScan = details.url + payloadString;
-        let flagged = false;
-        let reason = "";
-
-        // Kör heuristik
-        if (isExternal && SUSPICIOUS_PATTERNS.sensitive.test(dataToScan)) {
-            flagged = true;
-            reason = "Känslig data skickas mot extern domän (Lösenord/CVV)";
-        } else if (SUSPICIOUS_PATTERNS.sqli.test(dataToScan)) {
-            flagged = true;
-            reason = "Potentiell SQL-injektion detekterad i payload";
-        } else if (SUSPICIOUS_PATTERNS.xss.test(dataToScan)) {
-            flagged = true;
-            reason = "Potentiell XSS-injektion detekterad i payload";
+        let parsedPayload = payloadString;
+        if (payloadString) {
+            try { parsedPayload = JSON.parse(payloadString); } catch(e) {}
         }
 
-        if (flagged && details.tabId >= 0) {
-            if (!tabAlerts[details.tabId]) tabAlerts[details.tabId] = [];
-            
-            // Spara varningen
-            tabAlerts[details.tabId].push({ 
-                url: details.url, 
-                reason: reason, 
-                time: Date.now() 
-            });
+        // Cachea detaljerna till nästa skede (där vi har tillgång till headers)
+        pendingRequests.set(details.requestId, {
+            url: details.url,
+            method: details.method,
+            type: details.type,
+            tabId: details.tabId,
+            payloadString: payloadString,
+            parsedPayload: parsedPayload
+        });
 
-            // Meddela popup-UI:t om det är öppet
-            chrome.runtime.sendMessage({ 
-                type: "ALERT_TRIGGERED", 
-                tabId: details.tabId, 
-                reason: reason 
-            }).catch(() => {}); // Ignorera error om popupen är stängd
+        // Säkerställ upprensning om begäran avbryts
+        setTimeout(() => {
+            pendingRequests.delete(details.requestId);
+        }, 30000);
+    },
+    { urls: ["<all_urls>"] },
+    ["requestBody"]
+);
+
+// Fånga headers och kör den asynkrona skanningen
+chrome.webRequest.onBeforeSendHeaders.addListener(
+    async (details) => {
+        if (killSwitchedTabs.has(details.tabId)) return;
+
+        const reqData = pendingRequests.get(details.requestId);
+        if (!reqData) return;
+        pendingRequests.delete(details.requestId);
+
+        const headersMap = {};
+        if (details.requestHeaders) {
+            details.requestHeaders.forEach(h => {
+                headersMap[h.name.toLowerCase()] = h.value;
+            });
+        }
+
+        // Kör den asynkrona säkerhetsskanningen under huven
+        const scanResult = await scanPayload(
+            reqData.parsedPayload || reqData.payloadString,
+            headersMap,
+            reqData.url,
+            reqData.method
+        );
+
+        // Skicka alltid vidare payloaden med bifogad securityMetaData till inspektören
+        const requestData = {
+            url: reqData.url,
+            method: reqData.method,
+            type: reqData.type,
+            payload: reqData.parsedPayload || null,
+            securityMetaData: {
+                isSuspicious: scanResult.isSuspicious,
+                suspiciousReasons: scanResult.reasons
+            }
+        };
+
+        chrome.runtime.sendMessage({
+            type: 'NEW_PAYLOAD',
+            data: requestData
+        }).catch(() => {});
+
+        // Hantera larm vid upptäckta säkerhetsrisker
+        if (scanResult.isSuspicious && reqData.tabId >= 0) {
+            if (!tabAlerts[reqData.tabId]) tabAlerts[reqData.tabId] = [];
+            
+            scanResult.reasons.forEach(reason => {
+                // Spara varningen
+                tabAlerts[reqData.tabId].push({ 
+                    url: reqData.url, 
+                    reason: reason, 
+                    time: Date.now() 
+                });
+
+                // Meddela popup/panel-UI:t direkt
+                chrome.runtime.sendMessage({ 
+                    type: "ALERT_TRIGGERED", 
+                    tabId: reqData.tabId, 
+                    reason: reason 
+                }).catch(() => {});
+            });
         }
     },
     { urls: ["<all_urls>"] },
-    ["requestBody"] // Tillåter oss att läsa ut POST/PUT data
+    ["requestHeaders", "extraHeaders"]
 );
 
 // Hantera kommunikation med Popup UI

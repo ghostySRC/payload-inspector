@@ -9,6 +9,9 @@ chrome.runtime.connect({ name: 'sidepanel-connection' });
 document.addEventListener('DOMContentLoaded', () => {
   const listContainer = document.getElementById('listContainer');
   const clearBtn = document.getElementById('clearBtn');
+  const killSwitchBtn = document.getElementById('killSwitchBtn');
+  const alertBanner = document.getElementById('alertBanner');
+  const alertBannerText = document.getElementById('alertBannerText');
   const exportBtn = document.getElementById('exportBtn');
   const filterInput = document.getElementById('filterInput');
   const patchNotesBtn = document.getElementById('patchNotesBtn');
@@ -969,7 +972,48 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.runtime.onMessage.addListener((message) => {
      if (message.type === 'NEW_PAYLOAD' || message.action === 'NEW_REQUEST') { 
         addRequestToUI(message.data || message.request);
+     } else if (message.type === 'ALERT_TRIGGERED') {
+        if (alertBanner) {
+           alertBanner.style.display = 'flex';
+           alertBannerText.textContent = "SÄKERHETSRISK: " + message.reason;
+        }
      }
   });
   
+  // ==========================================
+  // KILL SWITCH & HEURISTIC STATE LOGIC
+  // ==========================================
+  if (killSwitchBtn) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs[0]) return;
+      const tabId = tabs[0].id;
+      
+      // Get initial state
+      chrome.runtime.sendMessage({ type: "GET_STATE", tabId: tabId }, (response) => {
+        if (response && response.isKilled) {
+          setKillSwitchActiveUI();
+        }
+        if (response && response.alerts && response.alerts.length > 0) {
+          alertBanner.style.display = 'flex';
+          alertBannerText.textContent = "SÄKERHETSRISK: " + response.alerts[response.alerts.length - 1].reason;
+        }
+      });
+
+      // Handle Kill Switch click
+      killSwitchBtn.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ type: "ENABLE_KILL_SWITCH", tabId: tabId }, (response) => {
+          if (response && response.success) {
+            setKillSwitchActiveUI();
+          }
+        });
+      });
+    });
+  }
+
+  function setKillSwitchActiveUI() {
+    if (!killSwitchBtn) return;
+    killSwitchBtn.disabled = true;
+    killSwitchBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg><span class="kill-text">Blocked</span>';
+  }
+
 });
