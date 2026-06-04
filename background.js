@@ -9,6 +9,11 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(self.clients.claim());
 });
 
+// Tillåt att sidopanelen öppnas när användaren klickar på tilläggets ikon
+if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((error) => console.error(error));
+}
+
 // Domäner vi litar på (allt annat räknas som externt/okänt)
 const KNOWN_DOMAINS = ["localhost", "127.0.0.1"]; 
 

@@ -9,7 +9,8 @@
     "declarativeNetRequestWithHostAccess",
     "storage",
     "tabs",
-    "activeTab"
+    "activeTab",
+    "sidePanel"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -17,8 +18,10 @@
   "background": {
     "service_worker": "background.js"
   },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "action": {
-    "default_popup": "sidepanel.html",
     "default_title": "Payload Inspector Pro"
   }
 }
