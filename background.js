@@ -53,7 +53,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 
 // Fånga headers och kör den asynkrona skanningen
 chrome.webRequest.onBeforeSendHeaders.addListener(
-    async (details) => {
+    (details) => {
         if (killSwitchedTabs.has(details.tabId)) return;
 
         const reqData = pendingRequests.get(details.requestId);
@@ -67,51 +67,53 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
             });
         }
 
-        // Kör den asynkrona säkerhetsskanningen under huven
-        const scanResult = await scanPayload(
+        // Kör den asynkrona säkerhetsskanningen under huven utan att returnera ett Promise från eventlyssnaren
+        scanPayload(
             reqData.parsedPayload || reqData.payloadString,
             headersMap,
             reqData.url,
             reqData.method
-        );
+        ).then((scanResult) => {
+            // Skicka alltid vidare payloaden med bifogad securityMetaData till inspektören
+            const requestData = {
+                url: reqData.url,
+                method: reqData.method,
+                type: reqData.type,
+                payload: reqData.parsedPayload || null,
+                securityMetaData: {
+                    isSuspicious: scanResult.isSuspicious,
+                    suspiciousReasons: scanResult.reasons
+                }
+            };
 
-        // Skicka alltid vidare payloaden med bifogad securityMetaData till inspektören
-        const requestData = {
-            url: reqData.url,
-            method: reqData.method,
-            type: reqData.type,
-            payload: reqData.parsedPayload || null,
-            securityMetaData: {
-                isSuspicious: scanResult.isSuspicious,
-                suspiciousReasons: scanResult.reasons
-            }
-        };
+            chrome.runtime.sendMessage({
+                type: 'NEW_PAYLOAD',
+                data: requestData
+            }).catch(() => {});
 
-        chrome.runtime.sendMessage({
-            type: 'NEW_PAYLOAD',
-            data: requestData
-        }).catch(() => {});
+            // Hantera larm vid upptäckta säkerhetsrisker
+            if (scanResult.isSuspicious && reqData.tabId >= 0) {
+                if (!tabAlerts[reqData.tabId]) tabAlerts[reqData.tabId] = [];
+                
+                scanResult.reasons.forEach(reason => {
+                    // Spara varningen
+                    tabAlerts[reqData.tabId].push({ 
+                        url: reqData.url, 
+                        reason: reason, 
+                        time: Date.now() 
+                    });
 
-        // Hantera larm vid upptäckta säkerhetsrisker
-        if (scanResult.isSuspicious && reqData.tabId >= 0) {
-            if (!tabAlerts[reqData.tabId]) tabAlerts[reqData.tabId] = [];
-            
-            scanResult.reasons.forEach(reason => {
-                // Spara varningen
-                tabAlerts[reqData.tabId].push({ 
-                    url: reqData.url, 
-                    reason: reason, 
-                    time: Date.now() 
+                    // Meddela popup/panel-UI:t direkt
+                    chrome.runtime.sendMessage({ 
+                        type: "ALERT_TRIGGERED", 
+                        tabId: reqData.tabId, 
+                        reason: reason 
+                    }).catch(() => {});
                 });
-
-                // Meddela popup/panel-UI:t direkt
-                chrome.runtime.sendMessage({ 
-                    type: "ALERT_TRIGGERED", 
-                    tabId: reqData.tabId, 
-                    reason: reason 
-                }).catch(() => {});
-            });
-        }
+            }
+        }).catch((err) => {
+            console.error("Security scan failed: ", err);
+        });
     },
     { urls: ["<all_urls>"] },
     ["requestHeaders", "extraHeaders"]
@@ -158,6 +160,16 @@ chrome.tabs.onRemoved.addListener((tabId) => {
         killSwitchedTabs.delete(tabId);
         chrome.declarativeNetRequest.updateSessionRules({
             removeRuleIds: [tabId]
+        });
+    }
+});
+
+// Lyssna på port-anslutningar från sidopanelen för att hålla anslutningen vid liv
+chrome.runtime.onConnect.addListener((port) => {
+    if (port.name === 'sidepanel-connection') {
+        // Logga internt vid uppkoppling/nedkoppling
+        port.onDisconnect.addListener(() => {
+            console.log('Sidopanel-port stängd');
         });
     }
 });

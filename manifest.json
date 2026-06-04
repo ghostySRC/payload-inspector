@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Payload Inspector Pro",
-  "version": "1.0.4",
+  "version": "1.0.3",
   "description": "Nätverksinspektion med Heuristisk Säkerhetsdetektor och Network Kill Switch för att förhindra dataläckage.",
   "permissions": [
     "webRequest",
