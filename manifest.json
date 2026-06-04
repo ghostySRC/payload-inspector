@@ -5,6 +5,7 @@
   "description": "Nätverksinspektion med Heuristisk Säkerhetsdetektor och Network Kill Switch för att förhindra dataläckage.",
   "permissions": [
     "webRequest",
+    "webRequestExtraHeaders",
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess",
     "storage",

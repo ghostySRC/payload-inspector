@@ -1,5 +1,13 @@
 // background.js
-importScripts('utils/securityScanner.js');
+importScripts('./utils/securityScanner.js');
+
+// Tvinga omedelbar aktivering av den nya Service Workern vid omladdning
+self.addEventListener('install', () => {
+    self.skipWaiting();
+});
+self.addEventListener('activate', (event) => {
+    event.waitUntil(self.clients.claim());
+});
 
 // Domäner vi litar på (allt annat räknas som externt/okänt)
 const KNOWN_DOMAINS = ["localhost", "127.0.0.1"]; 
