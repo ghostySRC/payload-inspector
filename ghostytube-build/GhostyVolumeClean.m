@@ -394,3 +394,5 @@ static void GhostyTubeInit(void) {
         HookOverlayClass(NSClassFromString(@"YTInlinePlayerBarContainerView"));
     }
 }
+
+// rebuild with graphics frameworks
