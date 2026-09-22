@@ -18,7 +18,7 @@ jobs:
           set -euxo pipefail
           SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
           clang -arch arm64 -dynamiclib -fobjc-arc -isysroot "$SDK" -miphoneos-version-min=15.0 \
-            -framework UIKit -framework Foundation -framework AVFoundation \
+            -framework UIKit -framework Foundation -framework AVFoundation -framework CoreGraphics -framework QuartzCore \
             -install_name @rpath/VolumeBoostYT.dylib \
             ghostytube-build/GhostyVolumeClean.m -o ghostytube-build/VolumeBoostYT.dylib
           file ghostytube-build/VolumeBoostYT.dylib
